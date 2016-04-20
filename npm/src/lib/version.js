@@ -2,10 +2,10 @@
 
 import * as semver from "semver";
 
-type VersionRange = ">=" | "<=";
+type VersionRange = ">=" | "<=" | '=';
 export type Version = {
-  range?: VersionRange,
-  major: number | "x",
+  range: VersionRange,
+  major: number,
   minor: number | "x",
   patch: number | "x",
   upperBound?: Version,
@@ -137,4 +137,128 @@ export function wildcardSatisfies(ver: Version, range: string): boolean {
   } else {
     return semver.satisfies(versionToString(ver), range);
   }
+};
+
+export function simplifyBoundedVersion(ver: Version): Version {
+  const upperBound = ver.upperBound;
+  if (!upperBound) {
+    return ver;
+  }
+
+  const {
+    range: loRange,
+    major: loMajor,
+    minor: loMinor,
+    patch: loPatch,
+  } = ver;
+
+  const {
+    range: hiRange,
+    major: hiMajor,
+    minor: hiMinor,
+    patch: hiPatch,
+  } = upperBound;
+
+  // If lower and upper are the same, we don't need bounds...
+  if (loRange === hiRange
+      && loMajor === hiMajor
+      && loMinor === hiMinor
+      && loPatch === hiPatch) {
+    return upperBound;
+  }
+
+  if (loRange === '<=') {
+    switch (hiRange) {
+      case '<=':
+        // Compare majors
+        if (loMajor < hiMajor) {
+          return upperBound;
+        }
+        if (loMajor > hiMajor) {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+
+        // Compare minors
+        if (loMinor === 'x' && hiMinor !== 'x') {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+        if (loMinor !== 'x' && hiMinor === 'x') {
+          return upperBound;
+        }
+        if (loMinor !== 'x' && hiMinor !== 'x' && loMinor < hiMinor) {
+          return upperBound;
+        }
+        if (loMinor !== 'x' && hiMinor !== 'x' && loMinor > hiMinor) {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+
+        // Compare patches
+        if (loPatch === 'x' && hiPatch !== 'x') {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+        if (loPatch !== 'x' && hiPatch === 'x') {
+          return upperBound;
+        }
+        if (loPatch !== 'x' && hiPatch !== 'x' && loPatch < hiPatch) {
+          return upperBound;
+        }
+        if (loPatch !== 'x' && hiPatch !== 'x' && loPatch > hiPatch) {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+        return ver;
+
+      case '>=':
+        if (loMajor === hiMajor && loMinor === hiMinor && loPatch === hiPatch) {
+          return {range: '=', major: loMajor, minor: 'x', patch: 'x'};
+        }
+        return ver;
+
+      case '=':
+        return ver;
+    }
+  } else if (loRange === '>=') {
+    switch (hiRange) {
+      case '<=':
+        if (loMajor === hiMajor && loMinor === hiMinor && loPatch === hiPatch) {
+          return {range: '=', major: loMajor, minor: 'x', patch: 'x'};
+        }
+        return ver;
+
+      case '>=':
+        // Compare majors
+        if (loMajor < hiMajor) {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+        if (loMajor > hiMajor) {
+          return upperBound;
+        }
+
+        // Compare minors
+        if (loMinor === 'x' && hiMinor !== 'x') {
+          const verCopy = copyVersion(ver);
+          verCopy.upperBound = undefined;
+          return verCopy;
+        }
+        if (loMinor !== 'x' && hiMinor === 'x') {
+          return upperBound;
+        }
+
+      case '=':
+        return ver;
+    }
+  }
+
+  return ver;
 };

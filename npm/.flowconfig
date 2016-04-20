@@ -7,7 +7,9 @@ flow-typed
 .*/flow-bins/.*
 
 [options]
+esproposal.class_instance_fields=enable
 experimental.const_params=true
+munge_underscores=true
 
 [version]
-0.22.1
+0.23.0

@@ -5,9 +5,9 @@ import request from "request";
 
 import {gitHubClient} from "./github.js";
 import {fs, path} from "./node.js";
-import {versionToString} from "./semver.js";
+import {versionToString} from "./version.js";
 
-import type {Version} from "./semver.js";
+import type {Version} from "./version.js";
 
 const P = Promise;
 
@@ -49,7 +49,7 @@ function _parseLibDefDirName(libDefDirName, validationErrors?): LibDef {
       validationErrors.set(libDefDirName, errors);
       return {
         pkgName: '',
-        pkgVersion: {major: 'x', minor: 'x', patch: 'x'},
+        pkgVersion: {range: '=', major: 0, minor: 'x', patch: 'x'},
         pkgVersionStr: '',
       };
     } else {
@@ -62,7 +62,7 @@ function _parseLibDefDirName(libDefDirName, validationErrors?): LibDef {
   minor = _validateVersionPart(minor, "minor", libDefDirName, validationErrors);
   patch = _validateVersionPart(patch, "patch", libDefDirName, validationErrors);
 
-  const pkgVersion = {major, minor, patch};
+  const pkgVersion = {range: '=', major, minor, patch};
 
   return {
     pkgName: itemMatches[1],
@@ -122,11 +122,12 @@ function _validateVersionRange(range, context, validationErrors?) {
       return range;
     default:
       const error =
-        `'${context}': Invalid range: '${range}'. Expected '>=', '<=', or '='.`;
+        `'${context}': Invalid range: '${range}'. Expected '>=' or '<='.`;
       if (validationErrors) {
         const errors = validationErrors.get(context) || [];
         errors.push(error);
         validationErrors.set(context, errors);
+        return '=';
       } else {
         throw new Error(error);
       }

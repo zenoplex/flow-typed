@@ -7,13 +7,13 @@ import {
   getLocalLibDefs,
   getLocalLibDefFlowVersions,
 } from "../lib/libDef.js";
-import {versionToString} from "../lib/semver.js";
+import {versionToString} from "../lib/version.js";
 
 import GitHub from "github";
 import request from "request";
 import * as semver from "semver";
 
-import type {Version} from "../lib/semver.js";
+import type {Version} from "../lib/version.js";
 
 // Used to decide which binary to fetch for each version of Flow
 const BIN_PLATFORM = (_ => {

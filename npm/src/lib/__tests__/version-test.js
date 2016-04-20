@@ -1,7 +1,7 @@
 // @flow
 jest.disableAutomock();
 
-import {stringToVersion} from '../semver.js';
+import {stringToVersion} from '../version.js';
 
 describe('semver', () => {
   describe('stringToVersion', () => {

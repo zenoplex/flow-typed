@@ -1,7 +1,7 @@
 // @flow
 
 import GitHub from "github";
-import {versionToString} from "./semver.js";
+import {versionToString} from "./version.js";
 
 import type {LibDef} from "./libDef.js";
 

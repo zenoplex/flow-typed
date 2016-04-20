@@ -2,10 +2,23 @@
 
 import {fs, path} from "../lib/node.js";
 
-import {versionToString} from "../lib/semver.js";
+import {versionToString} from "../lib/version.js";
 import {getLocalLibDefs, getLocalLibDefFlowVersions} from "../lib/libDef.js";
 
-const P = Promise;
+function _verifyNoOverlappingFlowVersions(libDefFlowVers, errs) {
+  const groupedByLibDef = new Map();
+  libDefFlowVers.forEach(libDefFlowVer => {
+    const libDef = libDefFlowVer.libDef;
+    const libDefID = `${libDef.pkgName}@${libDef.pkgVersionStr}`;
+    const group = groupedByLibDef.get(libDefID) || [];
+    group.push(libDefFlowVer);
+    groupedByLibDef.set(libDefID, group);
+  });
+
+  groupedByLibDef.forEach(([libDef, libDefName]) => {
+
+  });
+}
 
 export const name = "validate-defs";
 export const description =
@@ -17,6 +30,9 @@ export async function run(args: {}): Promise<number> {
     localLibDefs,
     validationErrors
   );
+
+  _verifyNoOverlappingFlowVersions(localLibDefFlowVersions, validationErrors);
+
   console.log(" ");
 
   validationErrors.forEach((errors, pkgNameVersion) => {
@@ -27,8 +43,8 @@ export async function run(args: {}): Promise<number> {
 
   if (validationErrors.size === 0) {
     console.log(
-      `All library definitions are named and structured correctedly. ` +
-      `(Found ${localLibDefFlowVersions.length})`
+      `All flow-versioned library definitions are named and structured ` +
+      `correctedly. (Found ${localLibDefFlowVersions.length})`
     );
     return 0;
   }
