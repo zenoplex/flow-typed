@@ -71,6 +71,13 @@ export const child_process = {
 };
 
 export const fs = {
+  close: function(fd: number): Promise<void> {
+    return new Promise((res, rej) => {
+      node_fs.close(fd, (err) => {
+        if (err) { rej(err); } else { res(); }
+      });
+    });
+  },
   createReadStream: node_fs.createReadStream,
   createWriteStream: node_fs.createWriteStream,
   exists: async function(path: string): Promise<boolean> {
@@ -82,6 +89,13 @@ export const fs = {
     return new Promise((res, rej) => {
       node_fs.mkdir(path, mode, (err) => {
         if (err) { rej(err); } else { res(); }
+      });
+    });
+  },
+  open: function(path: string, flags: string, mode?: number): Promise<number> {
+    return new Promise((res, rej) => {
+      node_fs.open(path, flags, mode, (err, fd) => {
+        if (err) { rej(err); } else { res(fd); }
       });
     });
   },

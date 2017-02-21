@@ -1,28 +1,45 @@
 // @flow
 
+import {
+  ensureCacheRepo,
+  getCacheRepoDir,
+  verifyCLIVersion,
+} from "../cacheRepoUtils";
+
 import type {
   FlowVersion,
-} from "./flowVersion";
+} from "../flowVersion";
 import {
   disjointVersionsAll as disjointFlowVersionsAll,
   parseDirString as parseFlowDirString,
-} from "./flowVersion";
+  toSemverString as flowVersionToSemver,
+} from "../flowVersion";
+
+import {
+  findLatestFileCommitHash,
+} from "../git";
 
 import {
   fs,
   path,
-} from "./node";
+} from "../node";
 
 import {
+  getRangeLowerBound,
+  getRangeUpperBound,
   versionToString,
-} from "./semver";
+} from "../semver";
+
+import
+  semver
+from "semver";
 
 import type {
   ValidationErrors as VErrors
-} from "./validationErrors";
+} from "../validationErrors";
 import {
   validationError,
-} from "./validationErrors";
+} from "../validationErrors";
 
 const P = Promise;
 
@@ -35,73 +52,15 @@ export type NpmLibDef = {|
   testFilePaths: Array<string>,
 |};
 
+export type NpmLibDefFilter =
+ | {|
+     type: 'exact',
+     pkgName: string,
+     pkgVersion: string,
+     flowVersion?: FlowVersion,
+   |}
+
 const TEST_FILE_NAME_RE = /^test_.*\.js$/;
-
-/**
- * Given a number-only part of a version string (i.e. the `major` part), parse
- * the string into a number.
- */
-function validateVersionNumPart(
-  part: string,
-  partName: string,
-  context: string,
-  validationErrs?: VErrors
-): number {
-  const num = parseInt(part, 10);
-  if (String(num) !== part) {
-    const error =
-      `Invalid ${partName} number: '${part}'. Expected a number.`;
-    validationError(context, error, validationErrs);
-    return -1;
-  }
-  return num;
-}
-
-/**
- * Given a number-or-wildcard part of a version string (i.e. a `minor` or
- * `patch` part), parse the string into either a number or 'x'.
- */
-function validateVersionPart(
-  part: string,
-  partName: string,
-  context: string,
-  validationErrs?: VErrors
-): number | 'x' {
-  if (part === "x") {
-    return part;
-  }
-  return validateVersionNumPart(part, partName, context, validationErrs);
-}
-
-const PKG_NAMEVER_RE = /^(.*)_v([0-9]+)\.([0-9]+|x)\.([0-9]+|x)(-.*)?$/;
-function parsePkgNameVer(
-  pkgNameVer: string,
-  errContext: string,
-  validationErrors?: VErrors,
-) {
-  const pkgNameVerMatches = pkgNameVer.match(PKG_NAMEVER_RE);
-  if (pkgNameVerMatches == null) {
-    const error =
-      `Malformed npm package name! ` +
-      `Expected the name to be formatted as <PKGNAME>_v<MAJOR>.<MINOR>.<PATCH>`;
-    validationError(pkgNameVer, error, validationErrors);
-    return null;
-  }
-
-  let [_, pkgName, major, minor, patch, prerel] = pkgNameVerMatches;
-  major =
-    validateVersionNumPart(major, "major", errContext, validationErrors);
-  minor =
-    validateVersionPart(minor, "minor", errContext, validationErrors);
-  patch =
-    validateVersionPart(patch, "patch", errContext, validationErrors);
-
-  if (prerel != null) {
-    prerel = prerel.substr(1);
-  }
-
-  return {pkgName, pkgVersion: {major, minor, patch, prerel}};
-}
 
 async function extractLibDefsFromNpmPkgDir(
   pkgDirPath: string,
@@ -240,6 +199,180 @@ async function extractLibDefsFromNpmPkgDir(
   return libDefs;
 }
 
+async function getCacheNpmLibDefs() {
+  await ensureCacheRepo();
+  await verifyCLIVersion();
+  return getNpmLibDefs(path.join(getCacheRepoDir(), 'definitions'));
+}
+
+const PKG_NAMEVER_RE = /^(.*)_v([0-9]+)\.([0-9]+|x)\.([0-9]+|x)(-.*)?$/;
+function parsePkgNameVer(
+  pkgNameVer: string,
+  errContext: string,
+  validationErrors?: VErrors,
+) {
+  const pkgNameVerMatches = pkgNameVer.match(PKG_NAMEVER_RE);
+  if (pkgNameVerMatches == null) {
+    const error =
+      `Malformed npm package name! ` +
+      `Expected the name to be formatted as <PKGNAME>_v<MAJOR>.<MINOR>.<PATCH>`;
+    validationError(pkgNameVer, error, validationErrors);
+    return null;
+  }
+
+  let [_, pkgName, major, minor, patch, prerel] = pkgNameVerMatches;
+  major =
+    validateVersionNumPart(major, "major", errContext, validationErrors);
+  minor =
+    validateVersionPart(minor, "minor", errContext, validationErrors);
+  patch =
+    validateVersionPart(patch, "patch", errContext, validationErrors);
+
+  if (prerel != null) {
+    prerel = prerel.substr(1);
+  }
+
+  return {pkgName, pkgVersion: {major, minor, patch, prerel}};
+}
+
+/**
+ * Given a number-or-wildcard part of a version string (i.e. a `minor` or
+ * `patch` part), parse the string into either a number or 'x'.
+ */
+function validateVersionPart(
+  part: string,
+  partName: string,
+  context: string,
+  validationErrs?: VErrors
+): number | 'x' {
+  if (part === "x") {
+    return part;
+  }
+  return validateVersionNumPart(part, partName, context, validationErrs);
+}
+
+/**
+ * Given a number-only part of a version string (i.e. the `major` part), parse
+ * the string into a number.
+ */
+function validateVersionNumPart(
+  part: string,
+  partName: string,
+  context: string,
+  validationErrs?: VErrors
+): number {
+  const num = parseInt(part, 10);
+  if (String(num) !== part) {
+    const error =
+      `Invalid ${partName} number: '${part}'. Expected a number.`;
+    validationError(context, error, validationErrs);
+    return -1;
+  }
+  return num;
+}
+
+function pkgVersionMatch(pkgSemver: string, libDefSemverRaw: string) {
+  // The package version should be treated as a semver implicitly prefixed by a
+  // `^`. (i.e.: "foo_v2.2.x" is the same range as "^2.2.x")
+  // UNLESS it is prefixed by the equals character (i.e. "foo_=v2.2.x")
+  let libDefSemver =
+    libDefSemverRaw[0] !== '=' && libDefSemverRaw[0] !== '^'
+    ? '^' + libDefSemverRaw
+    : libDefSemverRaw;
+
+  if (semver.valid(pkgSemver)) {
+    // Test the single package version against the LibDef range
+    return semver.satisfies(pkgSemver, libDefSemver);
+  }
+
+  if (semver.valid(libDefSemver)) {
+    // Test the single LibDef version against the package range
+    return semver.satisfies(libDefSemver, pkgSemver);
+  }
+
+  const pkgRange = new semver.Range(pkgSemver);
+  const libDefRange = new semver.Range(libDefSemver);
+
+  if (libDefRange.set[0].length !== 2) {
+    throw new Error(
+      "Invalid npm libdef version! It appears to be a non-continugous range."
+    );
+  }
+
+  const libDefLower = getRangeLowerBound(libDefRange);
+  const libDefUpper = getRangeUpperBound(libDefRange);
+
+  const pkgBelowLower = semver.gtr(libDefLower, pkgSemver);
+  const pkgAboveUpper = semver.ltr(libDefUpper, pkgSemver);
+  if (pkgBelowLower || pkgAboveUpper) {
+    return false;
+  }
+
+  const pkgLower = pkgRange.set[0][0].semver.version;
+  return libDefRange.test(pkgLower);
+}
+
+function filterLibDefs(
+  defs: Array<NpmLibDef>,
+  filter: NpmLibDefFilter,
+): Array<NpmLibDef> {
+  return defs.filter(def => {
+    let filterMatch = false;
+    switch (filter.type) {
+      case 'exact':
+        filterMatch = (
+          filter.pkgName.toLowerCase() === def.name.toLowerCase()
+          && pkgVersionMatch(filter.pkgVersion, def.version)
+        );
+        break;
+      default: (filter: empty);
+    }
+    if (!filterMatch) {
+      return false;
+    }
+
+    const filterFlowVersion = filter.flowVersion;
+    if (filterFlowVersion !== undefined) {
+      const {flowVersion} = def;
+      switch (flowVersion.kind) {
+        case 'all':
+          return true;
+        case 'ranged':
+        case 'specific':
+          return semver.satisfies(
+            flowVersionToSemver(filterFlowVersion),
+            flowVersionToSemver(def.flowVersion),
+          );
+        default: (flowVersion: empty);
+      }
+    }
+
+    return true;
+  }).sort((a, b) => {
+    const aZeroed = a.version.replace(/x/g, '0');
+    const bZeroed = b.version.replace(/x/g, '0');
+    return semver.gt(aZeroed, bZeroed) ? -1 : 1;
+  });
+}
+
+export async function findNpmLibDef(
+  pkgName: string,
+  pkgVersion: string,
+  flowVersion: FlowVersion,
+): Promise<null | NpmLibDef> {
+  const libDefs = await getCacheNpmLibDefs();
+  const filteredLibDefs = filterLibDefs(libDefs, {
+    type: "exact",
+    pkgName,
+    pkgVersion,
+    flowVersion,
+  });
+  return filteredLibDefs.length === 0 ? null : filteredLibDefs[0];
+}
+
+/**
+ * Retrieve a list of *all* npm libdefs.
+ */
 export async function getNpmLibDefs(
   defsDirPath: string,
   validationErrors?: VErrors,
@@ -285,12 +418,27 @@ export async function getNpmLibDefs(
       }
     } else {
       const error =
-        `Expected only directoris to be present in this directory.`;
+        `Expected only directories to be present in this directory.`;
       validationError(itemPath, error, validationErrors);
     }
   }));
 
   return npmLibDefs;
+};
+
+export async function getNpmLibDefVersionHash(
+  repoDirPath: string,
+  libDef: NpmLibDef,
+): Promise<string> {
+  const latestCommitHash = await findLatestFileCommitHash(
+    repoDirPath,
+    path.relative(repoDirPath, libDef.path)
+  );
+  return (
+    `${latestCommitHash.substr(0, 10)}/` +
+    `${libDef.name}_${libDef.version}/` +
+    `flow_${flowVersionToSemver(libDef.flowVersion)}`
+  );
 };
 
 export {

@@ -1,10 +1,30 @@
 // @flow
 
-import mkdirpCb from "mkdirp";
+import
+  fsExtra
+from "fs-extra";
 
-import {fs, path} from "./node.js";
+import
+  mkdirpCb
+from "mkdirp";
+
+import {
+  fs,
+  path,
+} from "./node.js";
 
 const P = Promise;
+
+export function copyDir(
+  srcPath: string,
+  destPath: string,
+): Promise<void> {
+  return new Promise((res, rej) => {
+    fsExtra.copy(srcPath, destPath, (err) => {
+      if (err) { rej(err); } else { res(); }
+    });
+  });
+}
 
 export function copyFile(
   srcPath: string,
