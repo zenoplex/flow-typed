@@ -220,6 +220,8 @@ declare class rxjs$Observable<+T> {
 
   pairwise(): rxjs$Observable<[T, T]>;
 
+  pluck<T>(...values: string[]): rxjs$Observable<T>
+
   publish(): rxjs$ConnectableObservable<T>;
 
   publishLast(): rxjs$ConnectableObservable<T>;

@@ -180,3 +180,8 @@ function f4(x: string, cb: (result: number) => void): void {}
 (Observable.bindCallback(f3)(): Observable<string>);
 // $ExpectError
 (Observable.bindCallback(f4)('arg'): Observable<string>);
+
+(Observable.of({ foo: 'test'}).pluck('foo'): Observable<string>);
+(Observable.of({ foo: { bar: 123 }}).pluck('foo', 'bar'): Observable<number>);
+// $ExpectError
+(Observable.of({ foo: { bar: 123 }}).pluck('foo', 'bar'): Observable<string>);
